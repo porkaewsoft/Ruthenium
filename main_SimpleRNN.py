@@ -22,19 +22,20 @@ class Model_SimpleRNN:
         self.layer1 = SimpleRNNLayer(inpSeq=self.x,mask=None,in_dim=2,
                                     hidden_dim=5,bias=1)
         
-        #self.forward = self.layer1.forward
+        self.forward = theano.function([self.x],self.layer1.output)
         self.current_output = self.layer1.output[0]
 
 
-        self.layer2 = TimeDistributedDenseLayer(inpSeq=self.current_output,mask=None,in_dim=2,out_dim=5)
-        self.forward = self.layer2.forward
+        self.layer2 = TimeDistributedDenseLayer(inpSeq=self.current_output,mask=None,in_dim=5,out_dim=5)
+        self.forward2 = theano.function([self.x],self.layer2.output)
 
 
         logging.info('Building Model Completed.')
 
 
     def predict(self,x):
-        return self.forward(x)
+        print self.forward(x)
+        return self.forward2(x)
         
 
     def train(self):

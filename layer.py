@@ -143,9 +143,10 @@ class TimeDistributedDenseLayer():
         
 
         seq = inpS.reshape((-1,word_embbed_size))
-        output = T.dot(seq,W)
+        output = T.nnet.softmax(T.dot(seq,W))
         output = output.reshape((n_timestep,batch_size,out_dim))
 
+        #self.forward is used to test only do not use in Model implementation
         self.forward = theano.function([self.inpS],output)
         self.output = output
 
@@ -187,6 +188,8 @@ class SimpleRNNLayer():
 
         NP_param[prefix + "W" + suffix] = Norm_weight(self.in_dim,hidden_dim)
         NP_param[prefix + "U" + suffix] = Ortho_weight(hidden_dim)
+
+        print NP_param[prefix + "U" + suffix]
 
         if bias is not None:
             NP_param[prefix + "b" + suffix] = np.zeros((hidden_dim,)).astype("float32")        
@@ -230,10 +233,10 @@ class SimpleRNNLayer():
             b = self.Tparam[prefix + "b" + suffix]
         
         def _step(m_,inp_,h_,U,W,b=None):
-            preact = T.dot(h_,U) + T.dot(inp_,W)
+            preact = T.dot(inp_,W) + T.dot(h_,U)
             if self.bias is not None:
                 preact += b
-            h = T.tanh(preact)
+            h = preact
             return h
 
         seqs = [mask,self.inp]
