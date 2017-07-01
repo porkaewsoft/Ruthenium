@@ -143,7 +143,14 @@ class TimeDistributedDenseLayer():
         
 
         seq = inpS.reshape((-1,word_embbed_size))
-        output = T.nnet.softmax(T.dot(seq,W))
+        
+        if self.activation == "softmax":
+            output = T.nnet.softmax(T.dot(seq,W))
+        elif self.activation == "tanh":
+            output = T.tanh(T.dot(seq,W))
+        elif self.activation == "relu":
+            output = T.nnet.relu(T.dot(seq,W))
+
         output = output.reshape((n_timestep,batch_size,out_dim))
 
         #self.forward is used to test only do not use in Model implementation
