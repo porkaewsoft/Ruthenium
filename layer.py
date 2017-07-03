@@ -77,6 +77,43 @@ class DenseLayer:
         return self.Tparam
 
 
+class EmbeddingLayer():
+    def __init__(self,inpS=None,vocab_size=1000,embedding_size=128,prefix="",suffix=""):
+        """
+        Create a matrix of vocab_size*embedding_size
+        """
+        self.inpS = inpS
+        self.vocab_size = vocab_size
+        self.embedding_size = embedding_size
+        self.prefix = prefix
+        self.suffix = suffix
+
+        NP_param = OrderedDict()
+        NP_param[prefix + "Wemb" + suffix] = Norm_weight(vocab_size,embedding_size)
+        self.Tparam = Init_theano_params(NP_param)
+        self.__build__()
+
+    def __build__(self):
+        """
+        InpS = input sequence (batch of word id), row is timestep, col is batch.
+        Create word embedding with advance indexing.
+
+        """
+        inpS = self.inpS
+        shape = inpS.shape
+        n_timestep = inpS.shape[0]
+        n_batch = inpS.shape[1]
+
+        W = self.Tparam[self.prefix + "Wemb" + self.suffix]
+
+        inpS_flat = inpS.flatten()
+        emb = W[inpS_flat]
+        emb = emb.reshape((n_timestep,n_batch,self.embedding_size))
+        output = emb
+        self.forward = theano.function([self.inpS],output)
+        self.output = output
+
+
 class TimeDistributedDenseLayer():
 
     """
