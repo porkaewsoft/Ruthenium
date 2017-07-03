@@ -9,7 +9,7 @@ import numpy as np
 """
 
 To Do
-
+0. Embedding Layer
 1. Training Step for Sequence Labeling
 2. Masking
 3. Regularization
@@ -79,8 +79,6 @@ class Model_SimpleRNN:
         """
         Add Regularize HERE !!
         """
-
-
 
         self.train = theano.function([self.x,self.y],[probs,cost,y_flat_idx])
 
