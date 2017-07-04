@@ -15,8 +15,8 @@ import numpy as np
 To Do
 0. Embedding Layer
 1. Training Step for Sequence Labeling
-2. Masking
-3. Regularization
+2. Masking 
+3. Regularization / Gradient Clipping [ grad = T.clip(T.grad(cost, [w, w1]), -5.0, 5.0) ]
 4. GRU
 5. LSTM
 6. LAU
