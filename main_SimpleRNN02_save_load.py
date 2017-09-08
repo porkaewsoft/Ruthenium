@@ -38,7 +38,7 @@ logging.info('Start Logging')
 """CLASS Model_SimpleRNN for Sequence Labeling"""
 
 class Model_SimpleRNN:
-    def __init__(self):
+    def __init__(self,load=None):
 
         logging.info('Start Building Model...')
 
@@ -81,7 +81,8 @@ class Model_SimpleRNN:
 
         self.TparamD = TparamD
 
-        self.load("model.json")
+        if load is not None:
+            self.load(load)
 
         #Training step
         """
@@ -172,7 +173,7 @@ if __name__ == "__main__":
     np_trgL = np.array(trgL,dtype="int64")
 
 
-    model = Model_SimpleRNN()
+    model = Model_SimpleRNN(load="model.json")
 
     i = 0
     lrate = 0.01

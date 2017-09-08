@@ -29,7 +29,7 @@ from theano import config
 from collections import OrderedDict
 from layer import AddLayer, DenseLayer, SimpleRNNLayer, TimeDistributedDenseLayer,EmbeddingLayer
 from optimizer import *
-from utils_data import load_corpus
+from utils_data import load_corpus,load_dictionary_inverse
 from random import shuffle
 import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
@@ -38,7 +38,7 @@ logging.info('Start Logging')
 """CLASS Model_SimpleRNN for Sequence Labeling"""
 
 class Model_SimpleRNN:
-    def __init__(self):
+    def __init__(self,load=None,isTrain=True):
 
         logging.info('Start Building Model...')
 
@@ -81,7 +81,8 @@ class Model_SimpleRNN:
 
         self.TparamD = TparamD
 
-        self.load("model.json")
+        if load is not None:
+            self.load(load)
 
         #Training step
         """
@@ -93,37 +94,39 @@ class Model_SimpleRNN:
 
         """
 
-        self.y0 = T.matrix("y",dtype="int64")
-        self.y = self.y0.dimshuffle((1,0))
+        if isTrain:
 
-        probs = self.layer3.output #layer2.output is already softmax
-        y_flat = self.y.flatten() #flatten ids
+            self.y0 = T.matrix("y",dtype="int64")
+            self.y = self.y0.dimshuffle((1,0))
 
-        y_flat_idx = T.arange(y_flat.shape[0]) * trg_vocab_size + y_flat #shift the ids to match the prob_flat
-        cost = -T.log(probs.flatten()[y_flat_idx]) #calcuate log for only picked ids
-        cost = cost.reshape([self.y.shape[0], self.y.shape[1]])
-        cost = cost.sum(0)
+            probs = self.layer3.output #layer2.output is already softmax
+            y_flat = self.y.flatten() #flatten ids
 
-        cost = cost.mean()
+            y_flat_idx = T.arange(y_flat.shape[0]) * trg_vocab_size + y_flat #shift the ids to match the prob_flat
+            cost = -T.log(probs.flatten()[y_flat_idx]) #calcuate log for only picked ids
+            cost = cost.reshape([self.y.shape[0], self.y.shape[1]])
+            cost = cost.sum(0)
 
-        """
-        Add Regularize HERE !!
-        """
+            cost = cost.mean()
 
-        logging.info("Building Gradient...")
-        self.train = theano.function([self.x,self.y],[probs,cost])
+            """
+            Add Regularize HERE !!
+            """
 
-        UpdateParams = TparamD
+            logging.info("Building Gradient...")
+            self.train = theano.function([self.x,self.y],[probs,cost])
 
-        grads = T.grad(cost, wrt=list(UpdateParams.values()))
-        f_grad = theano.function([self.x0, self.y0], grads, name='f_grad')
+            UpdateParams = TparamD
 
-        lr = T.scalar(name='lr')
-        optimizer = adadelta
-        self.f_grad_shared, self.f_update = optimizer(lr, UpdateParams, grads,
-                                                                   self.x0, self.y0, cost)
+            grads = T.grad(cost, wrt=list(UpdateParams.values()))
+            f_grad = theano.function([self.x0, self.y0], grads, name='f_grad')
 
-        logging.info('Building Model Completed.')
+            lr = T.scalar(name='lr')
+            optimizer = adadelta
+            self.f_grad_shared, self.f_update = optimizer(lr, UpdateParams, grads,
+                                                                       self.x0, self.y0, cost)
+
+            logging.info('Building Model Completed.')
 
 
     def predict(self,x):
@@ -171,23 +174,37 @@ if __name__ == "__main__":
     np_srcL = np.array(srcL,dtype="int64")
     np_trgL = np.array(trgL,dtype="int64")
 
+    trainFlag = False
 
-    model = Model_SimpleRNN()
+    model = Model_SimpleRNN(load="model.json",isTrain=trainFlag)
 
-    i = 0
-    lrate = 0.01
-    nepoch = 10
+    if trainFlag:
+        i = 0
+        lrate = 0.01
+        nepoch = 10
+        for n in range(nepoch):
+            total_loss = 0.0
+            for src,trg in batch_generator(np_srcL,np_trgL):
+                loss = model.f_grad_shared(src,trg)
+                total_loss += loss
+                model.f_update(lrate)
+                i += 1
+            logging.info("Epoch %d %f"%(n,total_loss))
 
-    for n in range(nepoch):
-        total_loss = 0.0
-        for src,trg in batch_generator(np_srcL,np_trgL):
-            loss = model.f_grad_shared(src,trg)
-            total_loss += loss
-            model.f_update(lrate)
-            i += 1
-        logging.info("Epoch %d %f"%(n,total_loss))
+        model.save("model.json")
+    else:
+        """Prediction"""
+        id2word = load_dictionary_inverse("data/trg.vocab")
 
-    model.save("model.json")
+        output = model.forward([np_srcL[0]]) # [] because model support only batch processing
+        print output
+        x = np.argmax(output,axis=2)
+        print x.flatten()
+
+        for a in x.flatten().tolist():
+            print id2word[a],
+
+
     #model = Model_SimpleRNN()
 
     #out = model.predict(np.asarray([[1,2],[2,3],[3,1]],dtype="int64"))

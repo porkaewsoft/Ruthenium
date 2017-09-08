@@ -40,7 +40,7 @@ class Model_SimpleRNN:
         in_dim = 2
         out_dim = 5
 
-        self.x = T.tensor3("x",dtype="float32")
+        self.x = T.tensor3("x",dtype=config.floatX)
 
 
         self.layer1 = SimpleRNNLayer(inpSeq=self.x,mask=None,in_dim=2,

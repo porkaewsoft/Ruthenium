@@ -123,7 +123,7 @@ class TimeDistributedDenseLayer():
 
     Basic Idea
 
-    import numpy as np 
+    import numpy as np
 
 
     a = [   [[1,1,1] , [3,3,3]],
@@ -177,10 +177,10 @@ class TimeDistributedDenseLayer():
 
         inpS = self.inpS
         W = self.Tparam[prefix + "W" + suffix]
-        
+
 
         seq = inpS.reshape((-1,word_embbed_size))
-        
+
         if self.activation == "softmax":
             output = T.nnet.softmax(T.dot(seq,W))
         elif self.activation == "tanh":
@@ -236,18 +236,18 @@ class SimpleRNNLayer():
         print NP_param[prefix + "U" + suffix]
 
         if bias is not None:
-            NP_param[prefix + "b" + suffix] = np.zeros((hidden_dim,)).astype("float32")        
+            NP_param[prefix + "b" + suffix] = np.zeros((hidden_dim,)).astype("float32")
         self.Tparam = Init_theano_params(NP_param)
-        self.__build__()        
+        self.__build__()
 
     def __build__(self):
         prefix = self.prefix
         suffix = self.suffix
         n_timestep = self.inp.shape[0]
-        
+
         if self.inp.ndim == 3:
             batch_size = self.inp.shape[1] #row is time step, col is batch id, depth is value of vector.
-            dim_inp    = self.inp.shape[2] #the size of input vector 
+            dim_inp    = self.inp.shape[2] #the size of input vector
         else:
             batch_size = 1
             dim_inp    = self.inp.shape[1] #the size of input vector
@@ -256,7 +256,7 @@ class SimpleRNNLayer():
 
         if self.init_state == None:
             self.init_state = T.zeros((batch_size,hdim))
-        
+
         init_state = self.init_state
 
         if self.mask is None:
@@ -272,10 +272,122 @@ class SimpleRNNLayer():
         """
         U = self.Tparam[prefix + "U" + suffix]
         W = self.Tparam[prefix + "W" + suffix]
-        
+
         if self.bias is not None:
             b = self.Tparam[prefix + "b" + suffix]
-        
+
+        def _step(m_,inp_,h_,U,W,b=None):
+            preact = T.dot(inp_,W) + T.dot(h_,U)
+            if self.bias is not None:
+                preact += b
+            h = preact
+            return h
+
+        seqs = [mask,self.inp]
+        nonseqs = [U,W]
+
+        if self.bias is not None:
+            nonseqs += [b]
+
+        rval, updates = theano.scan(_step,
+                                sequences=seqs,
+                                outputs_info=init_state,
+                                non_sequences=nonseqs,
+                                n_steps=n_timestep,
+                                truncate_gradient=-1,
+                                strict=False)
+
+        out = [rval]
+
+        self.forward = theano.function([self.inp],out)
+        self.output = out
+
+    def load_Tparam(self):
+        return self.Tparam
+
+
+
+class GRULayer():
+    """
+        x is input
+        h_ is hidden state
+        b is bias
+        g is activation function
+
+        g(Uh_ + Wx + b)
+
+        U is Matrix(hdim,hdim)
+        W is Matrix(in_dim,hdim)
+
+        Note: For batch processing
+
+        Uh_ will be T.dot(h_(batch),U);
+        same as Wx
+
+        TODO:
+            Implement dropout
+
+    """
+    def __init__(self,inpSeq,mask=None,in_dim=None,hidden_dim=100,bias=None,init_state=None,dropout=0.5,activation="sigmoid",prefix="",suffix=""):
+
+        self.prefix = prefix
+        self.suffix = suffix
+        self.bias = bias
+        self.activation = activation
+        self.inp = inpSeq
+        self.mask = mask
+        self.init_state = init_state
+        self.hidden_dim = hidden_dim
+        self.in_dim = in_dim
+
+        NP_param = OrderedDict()
+
+        NP_param[prefix + "W" + suffix] = Norm_weight(self.in_dim,hidden_dim)
+        NP_param[prefix + "U" + suffix] = Ortho_weight(hidden_dim)
+
+        print NP_param[prefix + "U" + suffix]
+
+        if bias is not None:
+            NP_param[prefix + "b" + suffix] = np.zeros((hidden_dim,)).astype("float32")
+        self.Tparam = Init_theano_params(NP_param)
+        self.__build__()
+
+    def __build__(self):
+        prefix = self.prefix
+        suffix = self.suffix
+        n_timestep = self.inp.shape[0]
+
+        if self.inp.ndim == 3:
+            batch_size = self.inp.shape[1] #row is time step, col is batch id, depth is value of vector.
+            dim_inp    = self.inp.shape[2] #the size of input vector
+        else:
+            batch_size = 1
+            dim_inp    = self.inp.shape[1] #the size of input vector
+
+        hdim = self.hidden_dim
+
+        if self.init_state == None:
+            self.init_state = T.zeros((batch_size,hdim))
+
+        init_state = self.init_state
+
+        if self.mask is None:
+            mask = T.ones((n_timestep, 1))
+        else:
+            mask = self.mask
+
+        """
+        _step is called by theano.scan
+            sequence = [m_,inp_]
+            output_infos = [self.init_state]
+
+        """
+        U = self.Tparam[prefix + "U" + suffix]
+        W = self.Tparam[prefix + "W" + suffix]
+
+        if self.bias is not None:
+            b = self.Tparam[prefix + "b" + suffix]
+
         def _step(m_,inp_,h_,U,W,b=None):
             preact = T.dot(inp_,W) + T.dot(h_,U)
             if self.bias is not None:

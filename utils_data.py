@@ -1,3 +1,7 @@
+"""
+TODO : bucketing, masking
+"""
+
 import fire
 
 def build_dictionary(srcFile=""):
@@ -29,10 +33,20 @@ def load_dictionary(srcVocab):
         line = fp.readline()
     return vocabD
 
+def load_dictionary_inverse(srcVocab):
+    fp = open(srcVocab,"r")
+    vocabD = {}
+    line = fp.readline()
+    while line:
+        item = line.strip().split("\t")
+        vocabD[int(item[0])] = item[1]
+        line = fp.readline()
+    return vocabD
+
 def load_corpus(srcFile,trgFile,srcVocab,trgVocab):
     srcVocabD = load_dictionary(srcVocab)
     trgVocabD = load_dictionary(trgVocab)
-    
+
     Fsrc = open(srcFile,"r")
     line = Fsrc.readline()
     srcL = []
