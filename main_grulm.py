@@ -33,6 +33,22 @@ logging.info('Start Logging')
 
 """CLASS Model_SimpleRNN for Sequence Labeling"""
 
+random_seed = 1234
+rng = np.random.RandomState(random_seed)
+
+def _dropout_from_layer(layer, p):
+    global rng
+    """p is the probablity of dropping a unit
+    """
+    srng = theano.tensor.shared_randomstreams.RandomStreams(
+            rng.randint(999999))
+    # p=1-p because 1's indicate keep and p is prob of dropping
+    mask = srng.binomial(n=1, p=1-p, size=layer.shape)
+    # The cast is important because
+    # int * float32 = float64 which pulls things off the gpu
+    output = layer * T.cast(mask, theano.config.floatX)
+    return output
+
 class Model_GRULM:
     def __init__(self,load=None):
 
@@ -61,9 +77,12 @@ class Model_GRULM:
         self.layer2 = GRULayer(inpSeq=self.layer1.output,mask=None,in_dim=embedding_size,
                                     hidden_dim=hidden_size,bias=1, prefix="RNN01")
 
+
         self.forward2 = theano.function([x], self.layer1.output)
         self.current_output = self.layer2.output[0]
 
+        """Dropout at hidden states"""
+        self.current_output = _dropout_from_layer(self.current_output,0.2)
 
         self.layer3 = TimeDistributedDenseLayer(inpSeq=self.current_output,mask=None,in_dim=hidden_size,out_dim=trg_vocab_size,activation="softmax",prefix="TimeDense01")
         self.forward = theano.function([x],self.layer3.output)
@@ -99,6 +118,8 @@ class Model_GRULM:
 
             self.y0 = T.ones_like(self.x0)
             self.y = T.set_subtensor(self.y0[:,0:-1],self.x0[:,1:])
+
+            self.fy = theano.function([self.x0],self.y)
 
             probs = self.layer3.output #layer2.output is already softmax
             y_flat = self.y.flatten() #flatten ids
@@ -184,20 +205,24 @@ if __name__ == "__main__":
 
 
     model = Model_GRULM()
+
+    """
     current_input = 0
     for i in range(0,20):
         print id2word[current_input],
         current_input = model.one_step(current_input)
-
+    """
     #model.save("model.json")
 
     i = 0
     lrate = 0.001
-    nepoch = 10000
+    nepoch = 100
 
     for n in range(nepoch):
         total_loss = 0.0
         for src,trg in batch_generator(np_srcL,np_trgL):
+            print src
+            print model.fy(src)
             loss = model.f_grad_shared(src)
             total_loss += loss
             model.f_update(lrate)
