@@ -44,9 +44,10 @@ class Model_GRULM:
 
         trg_vocab_size = 20
         src_vocab_size = 20
-        hidden_size = 5
+        hidden_size = 10
         embedding_size = 5
 
+        self.hidden_size = hidden_size
         self.x = T.matrix("x",dtype="int64")
         self.x0 = self.x
         x = self.x
@@ -67,6 +68,8 @@ class Model_GRULM:
         self.layer3 = TimeDistributedDenseLayer(inpSeq=self.current_output,mask=None,in_dim=hidden_size,out_dim=trg_vocab_size,activation="softmax",prefix="TimeDense01")
         self.forward = theano.function([x],self.layer3.output)
 
+        self.one_step_state = np.zeros((hidden_size,),dtype="float32")
+
         TparamD = OrderedDict()
         TparamD.update(self.layer1.Tparam)
         TparamD.update(self.layer2.Tparam)
@@ -80,60 +83,64 @@ class Model_GRULM:
         if load is not None:
             self.load(load)
 
-        #Training step
-        """
-            Batch of probs  of each time step
+        isTrain = False
 
-            [   [(....),(....)],
-                [(....),(....)],
-                [(....),(....)]     ] ==> for example, (3 step, 2 batch, 4 classes)
+        if isTrain:
 
-        """
+            #Training step
+            """
+                Batch of probs  of each time step
+    
+                [   [(....),(....)],
+                    [(....),(....)],
+                    [(....),(....)]     ] ==> for example, (3 step, 2 batch, 4 classes)
+    
+            """
 
-        self.y0 = T.ones_like(self.x0)
-        self.y = T.set_subtensor(self.y0[:,0:-1],self.x0[:,1:])
+            self.y0 = T.ones_like(self.x0)
+            self.y = T.set_subtensor(self.y0[:,0:-1],self.x0[:,1:])
 
-        probs = self.layer3.output #layer2.output is already softmax
-        y_flat = self.y.flatten() #flatten ids
+            probs = self.layer3.output #layer2.output is already softmax
+            y_flat = self.y.flatten() #flatten ids
 
-        y_flat_idx = T.arange(y_flat.shape[0]) * trg_vocab_size + y_flat #shift the ids to match the prob_flat
-        cost = -T.log(probs.flatten()[y_flat_idx]) #calcuate log for only picked ids
-        cost = cost.reshape([self.y.shape[0], self.y.shape[1]])
-        cost = cost.sum(0)
+            y_flat_idx = T.arange(y_flat.shape[0]) * trg_vocab_size + y_flat #shift the ids to match the prob_flat
+            cost = -T.log(probs.flatten()[y_flat_idx]) #calcuate log for only picked ids
+            cost = cost.reshape([self.y.shape[0], self.y.shape[1]])
+            cost = cost.sum(0)
 
-        cost = cost.mean()
+            cost = cost.mean()
 
-        """
-        Add Regularize HERE !!
-        """
+            """
+            Add Regularize HERE !!
+            """
 
-        logging.info("Building Gradient...")
-        self.train = theano.function([self.x],[probs,cost])
+            logging.info("Building Gradient...")
+            self.train = theano.function([self.x],[probs,cost])
 
-        UpdateParams = TparamD
+            UpdateParams = TparamD
 
-        grads = T.grad(cost, wrt=list(UpdateParams.values()))
-        f_grad = theano.function([self.x0], grads, name='f_grad')
+            grads = T.grad(cost, wrt=list(UpdateParams.values()))
+            f_grad = theano.function([self.x0], grads, name='f_grad')
 
-        lr = T.scalar(name='lr')
-        optimizer = adadelta_lm
-        self.f_grad_shared, self.f_update = optimizer(lr, UpdateParams, grads,
-                                                                   self.x0, cost)
+            lr = T.scalar(name='lr')
+            optimizer = adadelta_lm
+            self.f_grad_shared, self.f_update = optimizer(lr, UpdateParams, grads,
+                                                                       self.x0, cost)
 
         logging.info('Building Model Completed.')
-
 
     def predict(self,x):
         print self.forward(x)
         return self.forward(x)
 
-
     """One step computation"""
-
     def one_step(self,x_id):
+        hidden_size = self.hidden_size
         temp = self.layer1.one_step(x_id)
-        out = self.layer3.one_step(temp)
-        return out
+        gru_process = self.layer2.one_step()
+        h_new = gru_process(temp,self.one_step_state)
+        self.one_step_state = h_new
+        return h_new
 
     def save(self,filename):
         pool = OrderedDict()
@@ -172,9 +179,12 @@ if __name__ == "__main__":
     np_trgL = np.array(trgL,dtype="int64")
 
 
-    model = Model_GRULM()
+    model = Model_GRULM(load="model.json")
+
+    print model.one_step(1)
     print model.one_step(1)
 
+    model.save("model.json")
     raw_input("Continue : ")
 
     i = 0

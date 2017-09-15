@@ -454,5 +454,38 @@ class GRULayer():
         self.forward = theano.function([self.inp], out)
         self.output = out
 
+    def one_step(self):
+        prefix = self.prefix
+        suffix = self.suffix
+        Tparam = self.Tparam
+
+        inp = T.vector("GRUinVec",dtype="float32")
+        h = T.vector("GRUHiddenVec",dtype="float32")
+
+        Wz = Tparam[prefix + "Wz" + suffix]
+        Wr = Tparam[prefix + "Wr" + suffix]
+        Wh = Tparam[prefix + "Wh" + suffix]
+
+        Uz = Tparam[prefix + "Uz" + suffix]
+        Ur = Tparam[prefix + "Ur" + suffix]
+        Uh = Tparam[prefix + "Uh" + suffix]
+
+        xWz = T.dot(inp, Wz)  # dot all input with Wz
+        xWr = T.dot(inp, Wr)
+        xWh = T.dot(inp, Wh)
+
+        h_Uz = T.dot(h, Uz)
+        h_Ur = T.dot(h, Ur)
+
+        z = T.nnet.sigmoid(xWz + h_Uz)
+        r = T.nnet.sigmoid(xWr + h_Ur)
+
+        preact = xWh + T.dot(h, Uh) * r
+
+        h_new = T.tanh(preact)
+        h_new = (1. - z) * h_new + z * h
+
+        return theano.function([inp,h], h_new)
+
     def load_Tparam(self):
         return self.Tparam
