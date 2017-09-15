@@ -44,8 +44,8 @@ class Model_GRULM:
 
         trg_vocab_size = 8
         src_vocab_size = 8
-        hidden_size = 20
-        embedding_size = 20
+        hidden_size = 60
+        embedding_size = 5
 
         self.hidden_size = hidden_size
         self.x = T.matrix("x",dtype="int64")
@@ -183,7 +183,7 @@ if __name__ == "__main__":
 
 
 
-    model = Model_GRULM(load="model.json")
+    model = Model_GRULM()
     current_input = 0
     for i in range(0,20):
         print id2word[current_input],
@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
     i = 0
     lrate = 0.001
-    nepoch = 100
+    nepoch = 10000
 
     for n in range(nepoch):
         total_loss = 0.0
