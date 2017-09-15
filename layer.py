@@ -306,29 +306,36 @@ class SimpleRNNLayer():
         return self.Tparam
 
 
-
 class GRULayer():
     """
         x is input
-        h_ is hidden state
-        b is bias
-        g is activation function
+        h is hidden state
+        h_ is candidate hidden state
+        z is update gate
+        r is reset gate
 
-        g(Uh_ + Wx + b)
 
-        U is Matrix(hdim,hdim)
-        W is Matrix(in_dim,hdim)
+        Shared parameters
+        U_z
+        W_z
+        U_r
+        W_r
+        U_h
+        W_h
 
-        Note: For batch processing
-
-        Uh_ will be T.dot(h_(batch),U);
-        same as Wx
+        Computational Graph
+        z = sigmoid(xW_z + hU_z)
+        r = sigmoid(xW_r + hU_r)
+        h_ = tanh(xW_h + (h*r)U_h)
+        out = (1-z)*h_ + z*h
 
         TODO:
             Implement dropout
 
     """
-    def __init__(self,inpSeq,mask=None,in_dim=None,hidden_dim=100,bias=None,init_state=None,dropout=0.5,activation="sigmoid",prefix="",suffix=""):
+
+    def __init__(self, inpSeq, mask=None, in_dim=None, hidden_dim=100, bias=None, init_state=None, dropout=0.5,
+                 activation="sigmoid", prefix="", suffix=""):
 
         self.prefix = prefix
         self.suffix = suffix
@@ -342,76 +349,92 @@ class GRULayer():
 
         NP_param = OrderedDict()
 
-        NP_param[prefix + "W" + suffix] = Norm_weight(self.in_dim,hidden_dim)
-        NP_param[prefix + "U" + suffix] = Ortho_weight(hidden_dim)
+        """Parameter Init Here"""
 
-        print NP_param[prefix + "U" + suffix]
+        NP_param[prefix + "Wz" + suffix] = Norm_weight(self.in_dim, hidden_dim)
+        NP_param[prefix + "Uz" + suffix] = Ortho_weight(hidden_dim)
 
-        if bias is not None:
-            NP_param[prefix + "b" + suffix] = np.zeros((hidden_dim,)).astype("float32")
+        NP_param[prefix + "Wr" + suffix] = Norm_weight(self.in_dim, hidden_dim)
+        NP_param[prefix + "Ur" + suffix] = Ortho_weight(hidden_dim)
+
+        NP_param[prefix + "Wh" + suffix] = Norm_weight(self.in_dim, hidden_dim)
+        NP_param[prefix + "Uh" + suffix] = Ortho_weight(hidden_dim)
+
+        """TODO : Add Bias"""
+
         self.Tparam = Init_theano_params(NP_param)
         self.__build__()
 
     def __build__(self):
         prefix = self.prefix
         suffix = self.suffix
-        n_timestep = self.inp.shape[0]
+        Tparam = self.Tparam
 
-        if self.inp.ndim == 3:
-            batch_size = self.inp.shape[1] #row is time step, col is batch id, depth is value of vector.
-            dim_inp    = self.inp.shape[2] #the size of input vector
-        else:
-            batch_size = 1
-            dim_inp    = self.inp.shape[1] #the size of input vector
-
-        hdim = self.hidden_dim
-
-        if self.init_state == None:
-            self.init_state = T.zeros((batch_size,hdim))
-
-        init_state = self.init_state
+        """Prepare Input"""
+        inp = self.inp
+        ntimestep = inp.shape[0]
+        batch_size = inp.shape[1]
 
         if self.mask is None:
-            mask = T.ones((n_timestep, 1))
+            mask = T.alloc(1., inp.shape[0], 1)
         else:
             mask = self.mask
 
         """
-        _step is called by theano.scan
-            sequence = [m_,inp_]
-            output_infos = [self.init_state]
+        Dim of inp = (ntimestep, batch_size, in_dim) 
 
         """
-        U = self.Tparam[prefix + "U" + suffix]
-        W = self.Tparam[prefix + "W" + suffix]
 
-        if self.bias is not None:
-            b = self.Tparam[prefix + "b" + suffix]
+        """Prepare Weight no bias"""
+        hidden_dim = self.hidden_dim
+        Wz = Tparam[prefix + "Wz" + suffix]
+        xWz = T.dot(inp, Wz)  # dot all input with Wz
 
-        def _step(m_,inp_,h_,U,W,b=None):
-            preact = T.dot(inp_,W) + T.dot(h_,U)
-            if self.bias is not None:
-                preact += b
-            h = preact
+        Wr = Tparam[prefix + "Wr" + suffix]
+        xWr = T.dot(inp, Wr)
+
+        Wh = Tparam[prefix + "Wh" + suffix]
+        xWh = T.dot(inp, Wh)
+
+        """ sequence = m_,xWz_,xWr_,xWh_ 
+            output = h_
+            non_sequence = Uz_,Ur_,Uh_
+        """
+
+        def _step(m_, xWz_, xWr_, xWh_, h_, Uz_, Ur_, Uh_):
+            h_Uz = T.dot(h_, Uz_)
+            h_Ur = T.dot(h_, Ur_)
+
+            z = T.nnet.sigmoid(xWz_ + h_Uz)
+            r = T.nnet.sigmoid(xWr_ + h_Ur)
+
+            preact = xWh_ + T.dot(h_, Uh_) * r
+
+            h = T.tanh(preact)  # new hidden state
+
+            h = (1. - z) * h + z * h_
+            h = m_[:, None] * h + (1. - m_)[:, None] * h_
+
             return h
 
-        seqs = [mask,self.inp]
-        nonseqs = [U,W]
+        seqs = [mask, xWz, xWr, xWh]
+        init_states = [T.alloc(0., batch_size, hidden_dim)]
 
-        if self.bias is not None:
-            nonseqs += [b]
+        shared_vars = [Tparam[prefix + "Uz" + suffix],
+                       Tparam[prefix + "Ur" + suffix],
+                       Tparam[prefix + "Uh" + suffix]]
 
         rval, updates = theano.scan(_step,
-                                sequences=seqs,
-                                outputs_info=init_state,
-                                non_sequences=nonseqs,
-                                n_steps=n_timestep,
-                                truncate_gradient=-1,
-                                strict=False)
+                                    sequences=seqs,
+                                    outputs_info=init_states,
+                                    non_sequences=shared_vars,
+                                    name=prefix + "_layer",
+                                    n_steps=ntimestep,
+                                    truncate_gradient=-1,
+                                    strict=True)
 
         out = [rval]
-
-        self.forward = theano.function([self.inp],out)
+        self.forward = theano.function([self.inp], out)
         self.output = out
 
     def load_Tparam(self):
