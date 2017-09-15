@@ -25,7 +25,7 @@ from theano import config
 from collections import OrderedDict
 from layer import AddLayer, DenseLayer, SimpleRNNLayer, TimeDistributedDenseLayer,EmbeddingLayer,GRULayer
 from optimizer import *
-from utils_data import load_corpus
+from utils_data import load_corpus,load_dictionary_inverse
 from random import shuffle
 import logging
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
@@ -42,10 +42,10 @@ class Model_GRULM:
 
         TparamD = OrderedDict()
 
-        trg_vocab_size = 20
-        src_vocab_size = 20
-        hidden_size = 10
-        embedding_size = 5
+        trg_vocab_size = 8
+        src_vocab_size = 8
+        hidden_size = 20
+        embedding_size = 20
 
         self.hidden_size = hidden_size
         self.x = T.matrix("x",dtype="int64")
@@ -83,7 +83,7 @@ class Model_GRULM:
         if load is not None:
             self.load(load)
 
-        isTrain = False
+        isTrain = True
 
         if isTrain:
 
@@ -140,7 +140,10 @@ class Model_GRULM:
         gru_process = self.layer2.one_step()
         h_new = gru_process(temp,self.one_step_state)
         self.one_step_state = h_new
-        return h_new
+
+        out = np.argmax(self.layer3.one_step(h_new))
+
+        return out
 
     def save(self,filename):
         pool = OrderedDict()
@@ -157,7 +160,7 @@ class Model_GRULM:
         for key in pool:
             self.TparamD[key].set_value(np.array(pool[key],dtype="float32"))
 
-def batch_generator(srcL,trgL,batch_size=20):
+def batch_generator(srcL,trgL,batch_size=2):
     key = range(len(srcL))
     shuffle(key)
     np_key = np.array(key)
@@ -173,23 +176,24 @@ if __name__ == "__main__":
     Load Corpus -- read src and trg, then convert to ids
     """
     logging.info("Loading Corpus...")
-    srcL,trgL = load_corpus("data/src.txt","data/trg.txt","data/src.vocab","data/trg.vocab")
-
+    srcL,trgL = load_corpus("data/src2","data/trg2","data/src.vocab","data/trg.vocab")
+    id2word = load_dictionary_inverse("data/src.vocab")
     np_srcL = np.array(srcL,dtype="int64")
     np_trgL = np.array(trgL,dtype="int64")
 
 
+
     model = Model_GRULM(load="model.json")
+    current_input = 0
+    for i in range(0,20):
+        print id2word[current_input],
+        current_input = model.one_step(current_input)
 
-    print model.one_step(1)
-    print model.one_step(1)
-
-    model.save("model.json")
-    raw_input("Continue : ")
+    #model.save("model.json")
 
     i = 0
-    lrate = 0.01
-    nepoch = 10
+    lrate = 0.001
+    nepoch = 100
 
     for n in range(nepoch):
         total_loss = 0.0
