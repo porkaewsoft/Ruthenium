@@ -113,6 +113,11 @@ class EmbeddingLayer():
         self.forward = theano.function([self.inpS],output)
         self.output = output
 
+        """One Step"""
+        inpID = T.scalar("ID",dtype="int64")
+        one_step_out = W[inpID]
+        self.one_step = theano.function([inpID],one_step_out)
+
 
 class TimeDistributedDenseLayer():
 
@@ -193,6 +198,18 @@ class TimeDistributedDenseLayer():
         #self.forward is used to test only do not use in Model implementation
         self.forward = theano.function([self.inpS],output)
         self.output = output
+
+        """One Step"""
+        inpVec = T.vector("Input", dtype="float32")
+
+        if self.activation == "softmax":
+            out = T.nnet.softmax(T.dot(inpVec,W))
+        elif self.activation == "tanh":
+            out = T.tanh(T.dot(inpVec,W))
+        elif self.activation == "relu":
+            out = T.nnet.relu(T.dot(inpVec,W))
+
+        self.one_step = theano.function([inpVec], out)
 
 
 class SimpleRNNLayer():
